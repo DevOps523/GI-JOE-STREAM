@@ -9,6 +9,7 @@ import aiohttp
 from utils.Downloader import get_file_bytes
 from utils.Logger import Logger
 from utils.other import break_list, get_file_size
+from asyncio import Queue
 
 logger = Logger(__name__)
 
@@ -58,15 +59,16 @@ async def send_file(session: aiohttp.ClientSession, file: str | bytes, is_bytes=
 UPLOAD_PROGRESS = {}
 ERR_CACHE = []
 
-async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash: str):
+async def Start_TS_Uploader(session: aiohttp.ClientSession, ts_queue: Queue, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     tsData = {}
     new_file_list = []
 
-    for ts_path in tsFiles:
+    while not ts_queue.empty():
         if hash in ERR_CACHE:
-            return
+            return tsData, new_file_list
+        ts_path = await ts_queue.get()
         ts_name = ts_path.split("/")[-1]
 
         if get_file_size(ts_path) > 19.9 * 1024 * 1024:
@@ -95,15 +97,16 @@ async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash:
 
     return tsData, new_file_list
 
-async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash: str, headers: dict):
+async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, ts_queue: Queue, hash: str, headers: dict):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     tsData = {}
     new_file_list = []
 
-    for ts_name, ts_url in tsFiles:
+    while not ts_queue.empty():
         if hash in ERR_CACHE:
-            return
+            return tsData, new_file_list
+        ts_name, ts_url = await ts_queue.get()
         try:
             file_bytes = await get_file_bytes(session, ts_url, headers=headers)
         except Exception as e:
@@ -149,19 +152,14 @@ async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    base_files_per_uploader = total // NO_OF_UPLOADERS
-    extra_files = total % NO_OF_UPLOADERS
+    ts_queue = Queue()
 
-    breaked_data = []
-    start = 0
-    for i in range(NO_OF_UPLOADERS):
-        end = start + base_files_per_uploader + (1 if i < extra_files else 0)
-        breaked_data.append(data[start:end])
-        start = end
+    for item in data:
+        await ts_queue.put(item)
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
-    for i in breaked_data:
-        tasks.append(asyncio.create_task(Start_TS_Uploader(session, i, hash)))
+    for _ in range(NO_OF_UPLOADERS):
+        tasks.append(asyncio.create_task(Start_TS_Uploader(session, ts_queue, hash)))
 
     UPLOAD_PROGRESS[hash] = 0
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -174,9 +172,10 @@ async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
 
     combined_ts_data = {}
     new_file_list = []
-    for i, k in results[1:]:
-        combined_ts_data.update(i)
-        new_file_list.extend(k)
+    for result in results[1:]:
+        ts_data, file_list = result
+        combined_ts_data.update(ts_data)
+        new_file_list.extend(file_list)
 
     return combined_ts_data, new_file_list
 
@@ -184,19 +183,14 @@ async def Multi_TS_DL_And_Uploader(session: aiohttp.ClientSession, file_list: li
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(file_list)
-    base_files_per_uploader = total // NO_OF_UPLOADERS
-    extra_files = total % NO_OF_UPLOADERS
+    ts_queue = Queue()
 
-    breaked_data = []
-    start = 0
-    for i in range(NO_OF_UPLOADERS):
-        end = start + base_files_per_uploader + (1 if i < extra_files else 0)
-        breaked_data.append(file_list[start:end])
-        start = end
+    for item in file_list:
+        await ts_queue.put(item)
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, name))]
-    for i in breaked_data:
-        tasks.append(asyncio.create_task(Start_TS_DL_And_Uploader(session, i, hash, headers)))
+    for _ in range(NO_OF_UPLOADERS):
+        tasks.append(asyncio.create_task(Start_TS_DL_And_Uploader(session, ts_queue, hash, headers)))
 
     UPLOAD_PROGRESS[hash] = 0
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -209,9 +203,10 @@ async def Multi_TS_DL_And_Uploader(session: aiohttp.ClientSession, file_list: li
 
     combined_ts_data = {}
     new_file_list = []
-    for i, k in results[1:]:
-        combined_ts_data.update(i)
-        new_file_list.extend(k)
+    for result in results[1:]:
+        ts_data, file_list = result
+        combined_ts_data.update(ts_data)
+        new_file_list.extend(file_list)
 
     print(combined_ts_data, new_file_list)
 
