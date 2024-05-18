@@ -12,6 +12,7 @@ from utils.Playerxstream import PlayerxStream
 import aiohttp
 from typing import Literal
 from utils.Logger import Logger
+from uploader import Multi_TS_File_Uploader, Multi_TS_DL_And_Uploader  # Import the functions from Uploader.py
 
 logger = Logger(__name__)
 
@@ -44,7 +45,6 @@ async def queue_handler():
     global QUEUE_CACHE, ACTIVE_TASKS, ACTIVE_USERS
 
     while True:
-
         while len(QUEUE_CACHE) > 0:
             if ACTIVE_TASKS >= MAX_ACTIVE_TASKS:
                 break
@@ -78,7 +78,7 @@ async def process_video(
     file_msg: Message | None,
     _type: Literal["convert", "encode", "upload", "remote"],
 ):
-    global ACTIVE_USERS, ACTIVE_TASKS, ACTIVE_USERS
+    global ACTIVE_USERS, ACTIVE_TASKS
     ACTIVE_TASKS += 1
 
     try:
@@ -158,7 +158,7 @@ async def process_video(
             logger.info(f"M3u8 Url : {WEBSITE_DOMAIN}/file/{hash}/{m3u8}")
 
         elif _type == "encode":
-            # upload files to doodstream for processing video
+            # Upload files to doodstream for processing video
             video_url = await playerxstream.upload_file(session, file_path, proc, hash)
 
         elif _type == "remote":
@@ -228,3 +228,11 @@ async def process_video(
 
     ACTIVE_TASKS -= 1
     ACTIVE_USERS.remove(message.from_user.id)
+
+
+async def initialize():
+    await queue_handler()
+
+
+if __name__ == "__main__":
+    asyncio.run(initialize())
