@@ -47,10 +47,12 @@ async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=Fal
                     raise Exception("Error while sending file to telegram")
 
                 return response["result"], channel
+        except FloodWait as e:
+            logger.error(f"FloodWait Error: {e}")
+            await asyncio.sleep(e.value)  # Wait for the specified duration before retrying
         except Exception as e:
             logger.error(e)
             err += 1
-
             await remove_client(bot_token)
             continue
     raise Exception("Failed to send file to telegram")
