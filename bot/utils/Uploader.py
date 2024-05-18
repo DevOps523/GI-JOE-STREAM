@@ -58,6 +58,76 @@ async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=Fal
 UPLOAD_PROGRESS = {}
 ERR_CACHE = []
 
+async def Start_TS_Uploader(session: aiohttp.ClientSession, ts_path: str, hash: str):
+    global UPLOAD_PROGRESS, ERR_CACHE
+
+    tsData = {}
+    new_file_list = []
+
+    if hash in ERR_CACHE:
+        return
+    ts_name = ts_path.split("/")[-1]
+
+    if get_file_size(ts_path) > 19.9 * 1024 * 1024:
+        ERR_CACHE.append(hash)
+        raise Exception("Too high video bitrate !!! Compress your video first before conversion.")
+
+    err_count = 0
+    while True:
+        if err_count == 5:
+            raise Exception("Failed to upload ts file...")
+        try:
+            msg, channel = await send_file(session, ts_path)
+            new_ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
+            tsData[new_ts_name] = msg["message_id"]
+            new_file_list.append((ts_name, new_ts_name))
+            UPLOAD_PROGRESS[hash] += 1
+            break
+        except FloodWait as e:
+            logger.error(f"FloodWait Error : {e}")
+            await asyncio.sleep(e.value)
+            continue
+        except Exception as e:
+            err_count += 1
+            logger.error(f"Error while uploading ts file {e}")
+
+    return tsData, new_file_list
+
+async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, ts_name: str, ts_url: str, hash: str, headers: dict):
+    global UPLOAD_PROGRESS, ERR_CACHE
+
+    tsData = {}
+    new_file_list = []
+
+    if hash in ERR_CACHE:
+        return
+    try:
+        file_bytes = await get_file_bytes(session, ts_url, headers=headers)
+    except Exception as e:
+        ERR_CACHE.append(hash)
+        raise Exception(e)
+
+    err_count = 0
+    while True:
+        if err_count == 5:
+            raise Exception("Failed to upload ts file...")
+        try:
+            msg, channel = await send_file(session, file_bytes, bytes=True)
+            new_ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
+            tsData[new_ts_name] = msg["message_id"]
+            new_file_list.append((ts_name, ts_url))
+            UPLOAD_PROGRESS[hash] += 1
+            break
+        except FloodWait as e:
+            logger.error(f"FloodWait Error : {e}")
+            await asyncio.sleep(e.value)
+            continue
+        except Exception as e:
+            err_count += 1
+            logger.error(f"Error while uploading ts file {e}")
+
+    return tsData, new_file_list
+
 async def worker(session: aiohttp.ClientSession, queue: asyncio.Queue, hash: str, headers: dict = None):
     global UPLOAD_PROGRESS, ERR_CACHE
 
@@ -69,27 +139,9 @@ async def worker(session: aiohttp.ClientSession, queue: asyncio.Queue, hash: str
 
         try:
             if is_url:
-                file_bytes = await get_file_bytes(session, ts_path_or_url, headers=headers)
-                data_to_send = file_bytes
+                tsData, new_file_list = await Start_TS_DL_And_Uploader(session, ts_name, ts_path_or_url, hash, headers)
             else:
-                data_to_send = ts_path_or_url
-
-            err_count = 0
-            while True:
-                if err_count == 5:
-                    raise Exception("Failed to upload ts file...")
-                try:
-                    msg, channel = await send_file(session, data_to_send, bytes=is_url)
-                    new_ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
-                    UPLOAD_PROGRESS[hash] += 1
-                    break
-                except FloodWait as e:
-                    logger.error(f"FloodWait Error : {e}")
-                    await asyncio.sleep(e.value)
-                    continue
-                except Exception as e:
-                    err_count += 1
-                    logger.error(f"Error while uploading ts file {e}")
+                tsData, new_file_list = await Start_TS_Uploader(session, ts_path_or_url, hash)
         except Exception as e:
             ERR_CACHE.append(hash)
             logger.error(f"Error processing file {ts_name}: {e}")
