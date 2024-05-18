@@ -91,19 +91,28 @@ async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash:
     responses = await asyncio.gather(*tasks, return_exceptions=True)
 
     # Process responses
-    for response in responses:
+    for response, ts_path in zip(responses, tsFiles):  # Associate each response with its corresponding ts_path
         if isinstance(response, Exception):
-            # Handle exceptions here if needed
-            pass
+            # Handle exceptions here
+            if "video bitrate" in str(response):
+                logger.error("Too high video bitrate !!! Compress your video first before conversion.")
+            elif "Failed to upload" in str(response):
+                logger.error("Failed to upload ts file...")
+            else:
+                logger.error(f"Error uploading file {ts_path}: {response}")
         else:
-            msg, channel = response
-            ts_name = ts_path.split("/")[-1]
-            new_ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
-            tsData[new_ts_name] = msg["message_id"]
-            new_file_list.append((ts_name, new_ts_name))
-            UPLOAD_PROGRESS[hash] += 1
+            try:
+                msg, channel = response
+                ts_name = ts_path.split("/")[-1]
+                new_ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
+                tsData[new_ts_name] = msg["message_id"]
+                new_file_list.append((ts_name, new_ts_name))
+                UPLOAD_PROGRESS[hash] += 1
+            except Exception as e:
+                logger.error(f"Error processing response for file {ts_path}: {e}")
 
     return tsData, new_file_list
+
 
 async def Start_TS_DL_And_Uploader(
     session: aiohttp.ClientSession, tsFiles: list, hash: str, headers: dict
