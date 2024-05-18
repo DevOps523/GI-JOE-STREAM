@@ -28,7 +28,7 @@ MAX_ACTIVE_TASKS = 3
 MAX_USER_CONCURRENT_TASKS = 3
 
 # No. of simulataneous uploaders to run per task for .ts file upload
-NO_OF_UPLOADERS = 14
+NO_OF_UPLOADERS = 13
 
 # In MB (MegaBytes). Size of each segment uploaded to telegram. Must be less than 10 MB
 SEGMENT_SIZE = 5
