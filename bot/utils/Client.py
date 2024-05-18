@@ -4,7 +4,6 @@ from config import (
     MAIN_BOT_TOKEN,
     UPLOADER_BOTS_1,
     UPLOADER_BOTS_2,
-    UPLOADER_BOTS_3,
     LOGGER_BOT_TOKEN,
     OWNER_ID,
 )
