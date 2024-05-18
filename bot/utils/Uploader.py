@@ -9,15 +9,14 @@ import aiohttp
 from utils.Downloader import get_file_bytes
 from utils.Logger import Logger
 from utils.other import break_list, get_file_size
-from asyncio import Queue
 
 logger = Logger(__name__)
 
-async def send_file(session: aiohttp.ClientSession, file: str | bytes, is_bytes=False):
+async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=False):
     data = {}
-    if not is_bytes:
-        with open(file, "rb") as f:
-            data["document"] = f.read()
+    if not bytes:
+        with open(file, "rb") as file:
+            data["document"] = file.read()
     else:
         data["document"] = file
 
@@ -56,19 +55,20 @@ async def send_file(session: aiohttp.ClientSession, file: str | bytes, is_bytes=
             continue
     raise Exception("Failed to send file to telegram")
 
+
 UPLOAD_PROGRESS = {}
 ERR_CACHE = []
 
-async def Start_TS_Uploader(session: aiohttp.ClientSession, ts_queue: Queue, hash: str):
+
+async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     tsData = {}
     new_file_list = []
 
-    while not ts_queue.empty():
+    for ts_path in tsFiles:
         if hash in ERR_CACHE:
-            return tsData, new_file_list
-        ts_path = await ts_queue.get()
+            return
         ts_name = ts_path.split("/")[-1]
 
         if get_file_size(ts_path) > 19.9 * 1024 * 1024:
@@ -97,16 +97,18 @@ async def Start_TS_Uploader(session: aiohttp.ClientSession, ts_queue: Queue, has
 
     return tsData, new_file_list
 
-async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, ts_queue: Queue, hash: str, headers: dict):
+
+async def Start_TS_DL_And_Uploader(
+    session: aiohttp.ClientSession, tsFiles: list, hash: str, headers: dict
+):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     tsData = {}
     new_file_list = []
 
-    while not ts_queue.empty():
+    for ts_name, ts_url in tsFiles:
         if hash in ERR_CACHE:
-            return tsData, new_file_list
-        ts_name, ts_url = await ts_queue.get()
+            return
         try:
             file_bytes = await get_file_bytes(session, ts_url, headers=headers)
         except Exception as e:
@@ -118,7 +120,7 @@ async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, ts_queue: Que
             if err_count == 5:
                 raise Exception("Failed to upload ts file...")
             try:
-                msg, channel = await send_file(session, file_bytes, is_bytes=True)
+                msg, channel = await send_file(session, file_bytes, bytes=True)
                 ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
                 tsData[ts_name] = msg["message_id"]
                 new_file_list.append((ts_name, ts_url))
@@ -134,6 +136,7 @@ async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, ts_queue: Que
 
     return tsData, new_file_list
 
+
 async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
@@ -148,66 +151,86 @@ async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
         except Exception as e:
             logger.warning(e)
 
+
+async def distribute_files_evenly(files, no_of_uploaders):
+    chunk_size = len(files) // no_of_uploaders
+    remainder = len(files) % no_of_uploaders
+
+    chunks = []
+    start = 0
+
+    for i in range(no_of_uploaders):
+        end = start + chunk_size + (1 if i < remainder else 0)
+        chunks.append(files[start:end])
+        start = end
+
+    return chunks
+
+
 async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    ts_queue = Queue()
-
-    for item in data:
-        await ts_queue.put(item)
+    breaked_data = await distribute_files_evenly(data, NO_OF_UPLOADERS)
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
-    for _ in range(NO_OF_UPLOADERS):
-        tasks.append(asyncio.create_task(Start_TS_Uploader(session, ts_queue, hash)))
+    for i in breaked_data:
+        tasks.append(asyncio.create_task(Start_TS_Uploader(session, i, hash)))
 
     UPLOAD_PROGRESS[hash] = 0
     results = await asyncio.gather(*tasks, return_exceptions=True)
     if any(isinstance(result, Exception) for result in results):
         for task in tasks:
             task.cancel()  # Send cancel request to each task
-        await asyncio.gather(*tasks, return_exceptions=True)  # Wait for all tasks to handle their cancellation
+        await asyncio.gather(
+            *tasks, return_exceptions=True
+        )  # Wait for all tasks to handle their cancellation
 
         raise Exception("Failed To Upload Video")
 
     combined_ts_data = {}
     new_file_list = []
-    for result in results[1:]:
-        ts_data, file_list = result
-        combined_ts_data.update(ts_data)
-        new_file_list.extend(file_list)
+    for i, k in results[1:]:
+        combined_ts_data.update(i)
+        new_file_list.extend(k)
 
     return combined_ts_data, new_file_list
 
-async def Multi_TS_DL_And_Uploader(session: aiohttp.ClientSession, file_list: list, proc: Message, hash: str, name: str, headers: dict):
+
+async def Multi_TS_DL_And_Uploader(
+    session: aiohttp.ClientSession,
+    file_list: list,
+    proc: Message,
+    hash: str,
+    name: str,
+    headers: dict,
+):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(file_list)
-    ts_queue = Queue()
+    breaked_data = await distribute_files_evenly(file_list, NO_OF_UPLOADERS)
 
-    for item in file_list:
-        await ts_queue.put(item)
-
-    tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, name))]
-    for _ in range(NO_OF_UPLOADERS):
-        tasks.append(asyncio.create_task(Start_TS_DL_And_Uploader(session, ts_queue, hash, headers)))
+    tasks = [asyncio.create_task(ProgressUpdater(proc, hash, len(file_list), name))]
+    for i in breaked_data:
+        tasks.append(
+            asyncio.create_task(Start_TS_DL_And_Uploader(session, i, hash, headers))
+        )
 
     UPLOAD_PROGRESS[hash] = 0
     results = await asyncio.gather(*tasks, return_exceptions=True)
     if any(isinstance(result, Exception) for result in results):
         for task in tasks:
             task.cancel()  # Send cancel request to each task
-        await asyncio.gather(*tasks, return_exceptions=True)  # Wait for all tasks to handle their cancellation
+        await asyncio.gather(
+            *tasks, return_exceptions=True
+        )  # Wait for all tasks to handle their cancellation
 
         raise Exception("Failed To Upload Video")
 
     combined_ts_data = {}
     new_file_list = []
-    for result in results[1:]:
-        ts_data, file_list = result
-        combined_ts_data.update(ts_data)
-        new_file_list.extend(file_list)
-
-    print(combined_ts_data, new_file_list)
+    for i, k in results[1:]:
+        combined_ts_data.update(i)
+        new_file_list.extend(k)
 
     return combined_ts_data, new_file_list
