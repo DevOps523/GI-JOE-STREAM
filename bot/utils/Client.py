@@ -64,11 +64,5 @@ async def start_clients():
             "usage": 0,
             "token": token + "%*^2",
         }
-    for token in UPLOADER_BOTS_3:
-        pos += 1
-        UPLOADER_CLIENTS[pos] = {
-            "usage": 0,
-            "token": token + "%*^3",
-        }
 
     logger.info(f"Added {pos} Uploader Bots!")
