@@ -145,21 +145,14 @@ async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
             logger.warning(e)
 
 def even_break_list(data, num):
-    avg = len(data) / float(num)
-    out = []
-    last = 0.0
-
-    while last < len(data):
-        out.append(data[int(last):int(last + avg)])
-        last += avg
-
-    return out
+    k, m = divmod(len(data), num)
+    return [data[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(num)]
 
 async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    breaked_data = even_break_list(data, NO_OF_UPLOADERS)  # Use the even_break_list function
+    breaked_data = even_break_list(data, NO_OF_UPLOADERS)  # use even_break_list
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
     for i in breaked_data:
@@ -184,15 +177,25 @@ async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
 
     return combined_ts_data, new_file_list
 
-async def Multi_TS_DL_And_Uploader(session: aiohttp.ClientSession, file_list: list, proc: Message, hash: str, name: str, headers: dict):
+
+async def Multi_TS_DL_And_Uploader(
+    session: aiohttp.ClientSession,
+    file_list: list,
+    proc: Message,
+    hash: str,
+    name: str,
+    headers: dict,
+):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(file_list)
-    breaked_data = even_break_list(file_list, NO_OF_UPLOADERS)  # Use the even_break_list function
+    breaked_data = even_break_list(file_list, NO_OF_UPLOADERS)  # use even_break_list
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, len(file_list), name))]
     for i in breaked_data:
-        tasks.append(asyncio.create_task(Start_TS_DL_And_Uploader(session, i, hash, headers)))
+        tasks.append(
+            asyncio.create_task(Start_TS_DL_And_Uploader(session, i, hash, headers))
+        )
 
     UPLOAD_PROGRESS[hash] = 0
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -214,3 +217,4 @@ async def Multi_TS_DL_And_Uploader(session: aiohttp.ClientSession, file_list: li
     print(combined_ts_data, new_file_list)
 
     return combined_ts_data, new_file_list
+
