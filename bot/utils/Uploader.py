@@ -3,7 +3,7 @@ from pyrogram import Client
 import asyncio
 from utils.Database import save_file
 from utils.Client import get_least_used_token_and_channel, remove_client
-from config import NO_OF_UPLOADERS, STORAGE_CHANNEL_1, STORAGE_CHANNEL_2, STORAGE_CHANNEL_3
+from config import NO_OF_UPLOADERS, STORAGE_CHANNEL_1, STORAGE_CHANNEL_2
 from pyrogram.errors import FloodWait
 import aiohttp
 from utils.Downloader import get_file_bytes
@@ -29,8 +29,6 @@ async def send_file(session: aiohttp.ClientSession, file: str | bytes, is_bytes=
                 data["chat_id"] = str(STORAGE_CHANNEL_1)
             elif int(channel) == 2:
                 data["chat_id"] = str(STORAGE_CHANNEL_2)
-            elif int(channel) == 3:
-                data["chat_id"] = str(STORAGE_CHANNEL_3)
 
             url = f"https://api.telegram.org/bot{bot_token}/sendDocument"
             async with session.post(url, data=data) as resp:
