@@ -12,6 +12,7 @@ from utils.other import break_list, get_file_size
 
 logger = Logger(__name__)
 
+
 async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=False):
     data = {}
     if not bytes:
@@ -152,26 +153,13 @@ async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
             logger.warning(e)
 
 
-async def distribute_files_evenly(files, no_of_uploaders):
-    chunk_size = len(files) // no_of_uploaders
-    remainder = len(files) % no_of_uploaders
-
-    chunks = []
-    start = 0
-
-    for i in range(no_of_uploaders):
-        end = start + chunk_size + (1 if i < remainder else 0)
-        chunks.append(files[start:end])
-        start = end
-
-    return chunks
-
-
 async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    breaked_data = await distribute_files_evenly(data, NO_OF_UPLOADERS)
+    breaked_data = break_list(
+        data, total // NO_OF_UPLOADERS
+    )  # break data into 10 parts
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
     for i in breaked_data:
@@ -208,7 +196,9 @@ async def Multi_TS_DL_And_Uploader(
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(file_list)
-    breaked_data = await distribute_files_evenly(file_list, NO_OF_UPLOADERS)
+    breaked_data = break_list(
+        file_list, total // NO_OF_UPLOADERS
+    )  # break data into 10 parts
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, len(file_list), name))]
     for i in breaked_data:
@@ -232,5 +222,7 @@ async def Multi_TS_DL_And_Uploader(
     for i, k in results[1:]:
         combined_ts_data.update(i)
         new_file_list.extend(k)
+
+    print(combined_ts_data, new_file_list)
 
     return combined_ts_data, new_file_list
