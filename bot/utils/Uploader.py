@@ -152,14 +152,15 @@ async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
         except Exception as e:
             logger.warning(e)
 
+def even_break_list(data, num):
+    k, m = divmod(len(data), num)
+    return [data[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(num)]
 
 async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    breaked_data = break_list(
-        data, total // NO_OF_UPLOADERS
-    )  # break data into 10 parts
+    breaked_data = even_break_list(data, NO_OF_UPLOADERS)  # use even_break_list
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
     for i in breaked_data:
