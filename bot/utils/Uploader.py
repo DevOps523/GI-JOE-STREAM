@@ -12,6 +12,7 @@ from utils.other import break_list, get_file_size
 
 logger = Logger(__name__)
 
+
 async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=False):
     data = {}
     if not bytes:
@@ -47,18 +48,18 @@ async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=Fal
                     raise Exception("Error while sending file to telegram")
 
                 return response["result"], channel
-        except FloodWait as e:
-            logger.error(f"FloodWait Error: {e}")
-            await asyncio.sleep(e.value)  # Wait for the specified duration before retrying
         except Exception as e:
             logger.error(e)
             err += 1
+
             await remove_client(bot_token)
             continue
     raise Exception("Failed to send file to telegram")
 
+
 UPLOAD_PROGRESS = {}
 ERR_CACHE = []
+
 
 async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
@@ -73,8 +74,9 @@ async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash:
 
         if get_file_size(ts_path) > 19.9 * 1024 * 1024:
             ERR_CACHE.append(hash)
-            raise Exception("Too high video bitrate !!! Compress your video first before conversion.")
-
+            raise Exception(
+                "Too high video bitrate !!! Compress your video first before conversion."
+            )
         err_count = 0
         while True:
             if err_count == 5:
@@ -96,7 +98,10 @@ async def Start_TS_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash:
 
     return tsData, new_file_list
 
-async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, tsFiles: list, hash: str, headers: dict):
+
+async def Start_TS_DL_And_Uploader(
+    session: aiohttp.ClientSession, tsFiles: list, hash: str, headers: dict
+):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     tsData = {}
@@ -117,8 +122,8 @@ async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, tsFiles: list
                 raise Exception("Failed to upload ts file...")
             try:
                 msg, channel = await send_file(session, file_bytes, bytes=True)
-                new_ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
-                tsData[new_ts_name] = msg["message_id"]
+                ts_name = ts_name.replace(".ts", f"_c{channel}.ts")
+                tsData[ts_name] = msg["message_id"]
                 new_file_list.append((ts_name, ts_url))
                 UPLOAD_PROGRESS[hash] += 1
                 break
@@ -131,6 +136,7 @@ async def Start_TS_DL_And_Uploader(session: aiohttp.ClientSession, tsFiles: list
                 logger.error(f"Error while uploading ts file {e}")
 
     return tsData, new_file_list
+
 
 async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
     global UPLOAD_PROGRESS, ERR_CACHE
@@ -146,15 +152,14 @@ async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
         except Exception as e:
             logger.warning(e)
 
-def even_break_list(data, num):
-    k, m = divmod(len(data), num)
-    return [data[i * k + min(i, m):(i + 1) * k + min(i + 1, m)] for i in range(num)]
 
 async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    breaked_data = even_break_list(data, NO_OF_UPLOADERS)  # use even_break_list
+    breaked_data = break_list(
+        data, total // NO_OF_UPLOADERS
+    )  # break data into 10 parts
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
     for i in breaked_data:
@@ -191,7 +196,9 @@ async def Multi_TS_DL_And_Uploader(
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(file_list)
-    breaked_data = even_break_list(file_list, NO_OF_UPLOADERS)  # use even_break_list
+    breaked_data = break_list(
+        file_list, total // NO_OF_UPLOADERS
+    )  # break data into 10 parts
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, len(file_list), name))]
     for i in breaked_data:
@@ -219,4 +226,3 @@ async def Multi_TS_DL_And_Uploader(
     print(combined_ts_data, new_file_list)
 
     return combined_ts_data, new_file_list
-
