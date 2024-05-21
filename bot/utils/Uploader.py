@@ -12,18 +12,6 @@ from utils.other import break_list, get_file_size
 
 logger = Logger(__name__)
 
-def break_list(data, num_uploaders):
-    avg = len(data) // num_uploaders
-    remainder = len(data) % num_uploaders
-    result = []
-    start = 0
-    
-    for i in range(num_uploaders):
-        end = start + avg + (1 if i < remainder else 0)
-        result.append(data[start:end])
-        start = end
-
-    return result
 
 async def send_file(session: aiohttp.ClientSession, file: str | bytes, bytes=False):
     data = {}
@@ -164,11 +152,14 @@ async def ProgressUpdater(proc: Message, hash: str, total: int, name: str):
         except Exception as e:
             logger.warning(e)
 
+
 async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(data)
-    breaked_data = break_list(data, NO_OF_UPLOADERS)  # Use the modified break_list function
+    breaked_data = break_list(
+        data, total // NO_OF_UPLOADERS
+    )  # break data into 10 parts
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, total, "Video"))]
     for i in breaked_data:
@@ -193,6 +184,7 @@ async def Multi_TS_File_Uploader(session, data: list, proc: Message, hash: str):
 
     return combined_ts_data, new_file_list
 
+
 async def Multi_TS_DL_And_Uploader(
     session: aiohttp.ClientSession,
     file_list: list,
@@ -204,7 +196,9 @@ async def Multi_TS_DL_And_Uploader(
     global UPLOAD_PROGRESS, ERR_CACHE
 
     total = len(file_list)
-    breaked_data = break_list(file_list, NO_OF_UPLOADERS)  # Use the modified break_list function
+    breaked_data = break_list(
+        file_list, total // NO_OF_UPLOADERS
+    )  # break data into 10 parts
 
     tasks = [asyncio.create_task(ProgressUpdater(proc, hash, len(file_list), name))]
     for i in breaked_data:
@@ -228,5 +222,7 @@ async def Multi_TS_DL_And_Uploader(
     for i, k in results[1:]:
         combined_ts_data.update(i)
         new_file_list.extend(k)
+
+    print(combined_ts_data, new_file_list)
 
     return combined_ts_data, new_file_list
